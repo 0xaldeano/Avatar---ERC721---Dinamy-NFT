@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: MIT
+/// @title NATIVA - dNFT Avatar  
+/// @author https://github.com/rober-gs
+/// @notice Dinamic Non Fungible Token 
+/// @dev 🚧👷 Building... 
+
+pragma solidity ^0.8.4;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+contract Avatar is ERC721, ERC721URIStorage, Ownable {
+
+    uint256 public avatarType = 0;
+    uint256 public avatarMaxTokens;
+    uint256 public avatarMaxTokensToBuy;
+    uint256 public avatarSingleTokenPrice;
+    uint256 public avatarTotalMinted;
+
+    uint256 public erc1155Id;
+    address public contractAddress;
+
+    mapping(address => mapping(uint256 => uint256)) public avatarOwnerToClaimedCounts;
+    mapping(uint256 => uint256) public personalizationTraits;
+
+    uint256 public indexAvatar;
+    uint256 public paused;
+
+	mapping(uint256 => uint256) private signatureIds;
+    mapping(uint256 => uint256) private availableIds;
+
+	address public allowedToExecuteMint;
+    address public Owner;
+    address public signAddress;
+    string public baseTokenURI;
+
+    constructor() ERC721("NAME_TOKEN", "SYMBOL_TOKEN") {}
+    function avatarCreate(address to, string memory uri) public onlyOwner {       
+        
+        _safeMint(to, indexAvatar);
+        _setTokenURI(indexAvatar, uri);
+    }
+
+    function setupAvatar(
+
+        uint256 _avatarType,
+        uint256 _avatarMaxTokens,
+        uint256 _avatarMaxTokensToBuy,
+        uint256 _avatarSingleTokenPrice,
+        address _contractAddress,
+        uint256 _erc1155Id
+
+    ) external onlyOwner {
+
+        require(_avatarType < 3 && _avatarMaxTokens > 0 && _avatarMaxTokensToBuy > 0, "Invalid configuration");
+        
+		if (_avatarType != 0) {
+            require(_contractAddress != address(0x0), "Invalid contract address");
+        }
+        
+		require(_avatarMaxTokensToBuy <= _avatarMaxTokens, "Invalid supply configuration");
+
+        avatarType = _avatarType;
+        avatarMaxTokens = _avatarMaxTokens;
+        avatarMaxTokensToBuy = _avatarMaxTokensToBuy;
+        avatarSingleTokenPrice = _avatarSingleTokenPrice;
+        avatarTotalMinted = 0;
+        contractAddress = _avatarType == 0 ? address(0) : _contractAddress;
+        erc1155Id = _avatarType == 2 ? _erc1155Id : 0;
+        indexAvatar++;
+    }
+
+    function price(uint256 _count) public view virtual returns (uint256) {
+
+        return avatarSingleTokenPrice * _count;		
+    }
+
+	function checkAvatarNotComplete(
+		uint256 _amount
+	)
+		internal view returns (bool) 
+	{
+        return _amount > 0 && avatarTotalMinted + _amount <= avatarMaxTokens;	
+    }
+	function checkLimitNotReached(
+		address _wallet,
+		uint256 _amount
+	)
+		internal view returns (bool) 
+	{
+        return  avatarOwnerToClaimedCounts[_wallet][indexAvatar - 1] + _amount <= avatarMaxTokensToBuy; // && totalSupply() + _amount <= maxSupply;
+    }
+
+	function checkMintAllowed(
+		address _wallet,
+		uint256 _amount
+	) 
+		public view returns (bool) 
+	{
+        return checkAvatarNotComplete(_amount) && checkLimitNotReached(_wallet, _amount);
+    }
+
+	function mint(
+        address _wallet,
+        uint256 _amount,
+        uint256 _signatureId
+        
+    )
+		external
+	{
+        require(indexAvatar > 0, "Contract is not configured");
+        require(_msgSender() == allowedToExecuteMint, "Not allowed");
+        require(paused == 0, "Contract is paused");
+        require(signatureIds[_signatureId] == 0, "signatureId already used");        
+
+        signatureIds[_signatureId] = 1;
+
+        require(checkAvatarNotComplete(_amount), "Wave completed");
+        require(checkLimitNotReached(_wallet, _amount), "Max allowed");
+
+        if (avatarType == 1) {
+            require(IERC721(contractAddress).balanceOf(_wallet) > 0, "No NFT");
+        } else if (avatarType == 2) {
+            require(IERC1155(contractAddress).balanceOf(_wallet, erc1155Id) > 0, "No NFT");
+        }
+
+        uint256 _price = price(_amount);
+
+        avatarOwnerToClaimedCounts[_wallet][indexAvatar - 1] += _amount;
+
+        avatarTotalMinted += _amount;
+
+        for (uint256 i = 0; i < _amount; i++) {
+            uint256 tokenId = _price - 1;
+            _safeMint(_wallet, tokenId);
+        }
+    }
+
+
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) { }
+
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        override(ERC721, ERC721URIStorage)
+        returns (string memory)
+    {
+        return super.tokenURI(tokenId);
+    }
+}
