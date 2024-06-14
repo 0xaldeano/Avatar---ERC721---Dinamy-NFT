@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: MIT
+/// @title NATIVA - Item Stock  
+/// @author https://github.com/rober-gs
+/// @notice Multi-token standard
+/// @dev 🚧👷 Building... 
+pragma solidity ^0.8.4;
+
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";    
+import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+contract NativaStock is ERC1155, AccessControlEnumerable, ERC1155Supply {
+    
+    error TokenIdExistError(uint id);
+    error CategoryExistError(string category);
+    error CategoryNotExistError(string category);
+
+    event NewCategory(string indexed category, uint indexed id, address indexed sender);
+
+    using Counters for Counters.Counter;    
+    Counters.Counter private _categoryID; 
+    Counters.Counter private _tokenID; 
+    
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    
+    // TODO : MINTEO de forma uno a uno
+    bytes32 public constant URI_SETTER_ROLE = keccak256("URI_SETTER_ROLE");
+    
+    // ??
+    // ??        
+    //mapping (uint => string) private _categories;  
+    mapping (string => uint) private _categories;    
+    mapping (uint => string) private _metadataByID;
+    mapping (uint => uint[]) private _categoryTokens;
+
+    constructor(string memory _uri) ERC1155(_uri) {        
+
+        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _grantRole(URI_SETTER_ROLE, msg.sender);
+        _grantRole(MINTER_ROLE, msg.sender);
+
+        _categoryAdd("Background");
+        _categoryAdd("Skin");
+        _categoryAdd("Tattoo");
+        _categoryAdd("Hairstyle");
+        _categoryAdd("Accessories");
+        _categoryAdd("Masks");
+        _categoryAdd("Weapons");
+        _categoryAdd("Element");    
+    }    
+    function setURI(string memory newuri) 
+        public
+    {
+        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "Only Administrators");        
+        _setURI(newuri);
+    }
+    /* @dev Validar Aproach que se acople mejor. OK */  
+    function uri(uint id) 
+        public 
+        override 
+        view 
+        returns (string memory)
+    {
+        return _metadataByID[id];
+    }
+
+    function mint(address account, string memory category, string memory metadata)
+        public        
+    {        
+        if(_categoryExist(category)){
+            revert CategoryNotExistError(category);
+        }
+        _tokenID.increment();
+        
+        //TODO cambiar amount
+        uint amount = 1;       
+        uint id = _tokenID.current();
+        
+        _mint(account, id, amount, "");       
+
+        _metadataByID[id] = metadata;
+        _categoryTokens[
+            _categories[category]
+        ].push(id);
+    }
+    
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC1155, AccessControlEnumerable)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+    function createCategory(string memory category) 
+        public 
+    {
+        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "Only Administrators");    
+        
+        if(_categories[category] != 0) {
+            revert CategoryExistError(category);
+        }   
+        _categoryAdd(category);
+        
+        emit NewCategory(category, _categoryID.current(), _msgSender());
+    }
+
+    function _categoryAdd(string memory category) 
+        internal
+    {             
+        _categoryID.increment();
+        _categories[category] = _categoryID.current();       
+    }
+
+    function _categoryExist(string memory category)
+        internal
+        view
+        returns (bool) 
+    {
+        return _categories[category] > 0;
+    }
+
+    function _beforeTokenTransfer(address operator, address from, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data)
+        internal
+        override(ERC1155, ERC1155Supply)
+    {
+        super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
+    }
+}
